@@ -39,13 +39,24 @@ const formatFromDateInput = (dateStr: string) => {
   return formatLongDateID(date);
 };
 
-// Helpers untuk input rupiah
+// Helpers untuk input rupiah & digit
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 const toRupiahInput = (n: number) => `Rp ${formatNumID(n)}`;
+const parseDigitsToNumber = (s: string): number | "" => {
+  const d = onlyDigits(s);
+  return d === "" ? "" : Number(d);
+};
+
+// Fallback ID jika crypto.randomUUID tidak tersedia
+const genId = () =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2, 10);
 
 export default function Page() {
   const [storeName, setStoreName] = useState("");
   const [cashierName, setCashierName] = useState("");
+  const [cashierEnabled, setCashierEnabled] = useState<boolean>(true);
   const [transactionDate, setTransactionDate] = useState<string>("");
   const [paperWidth, setPaperWidth] = useState<PaperWidth>("58");
 
@@ -59,7 +70,6 @@ export default function Page() {
 
   const [itemName, setItemName] = useState("");
   const [itemQty, setItemQty] = useState<number | "">("");
-  // Ubah input harga: pisahkan tampilan (string "Rp ...") dan nilai angka
   const [itemPriceDisplay, setItemPriceDisplay] = useState<string>("");
   const [itemPriceNum, setItemPriceNum] = useState<number | "">("");
 
@@ -72,6 +82,11 @@ export default function Page() {
         const parsed = JSON.parse(saved);
         setStoreName(parsed.storeName ?? "");
         setCashierName(parsed.cashierName ?? "");
+        setCashierEnabled(
+          typeof parsed.cashierEnabled === "boolean"
+            ? parsed.cashierEnabled
+            : true
+        );
         setTransactionDate(parsed.transactionDate ?? "");
         setPaperWidth(parsed.paperWidth ?? "58");
         setLogoDataUrl(parsed.logoDataUrl ?? "");
@@ -95,6 +110,7 @@ export default function Page() {
     const data = {
       storeName,
       cashierName,
+      cashierEnabled,
       transactionDate,
       paperWidth,
       logoDataUrl,
@@ -109,6 +125,7 @@ export default function Page() {
   }, [
     storeName,
     cashierName,
+    cashierEnabled,
     transactionDate,
     paperWidth,
     logoDataUrl,
@@ -121,21 +138,22 @@ export default function Page() {
   const addItem = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      const qtyNum = typeof itemQty === "number" ? itemQty : 0;
       if (
-        !itemName ||
-        !itemQty ||
+        !itemName.trim() ||
+        qtyNum < 1 ||
         itemPriceNum === "" ||
         Number.isNaN(Number(itemPriceNum))
       ) {
         return;
       }
-      const id = crypto.randomUUID();
+      const id = genId();
       setItems((prev) => [
         ...prev,
         {
           id,
           name: itemName.trim(),
-          qty: Number(itemQty),
+          qty: qtyNum,
           price: Number(itemPriceNum),
         },
       ]);
@@ -183,6 +201,7 @@ export default function Page() {
     if (confirm("Hapus semua data nota?")) {
       setStoreName("");
       setCashierName("");
+      setCashierEnabled(true);
       setTransactionDate("");
       setPaperWidth("58");
       setLogoDataUrl("");
@@ -231,6 +250,7 @@ export default function Page() {
         </header>
 
         <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          {/* Panel input - disembunyikan saat print */}
           <section className="print:hidden rounded-2xl sm:rounded-3xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5 shadow-2xl shadow-black/50 ring-1 ring-amber-500/10 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/40">
             <h2 className="text-base sm:text-lg font-semibold text-amber-300">
               Data Nota
@@ -274,6 +294,40 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Nama kasir + toggle tampilkan */}
+              <div className="grid items-center gap-2 sm:grid-cols-3">
+                <label
+                  htmlFor="cashierName"
+                  className="text-sm text-neutral-300"
+                >
+                  Nama Kasir
+                </label>
+                <div className="sm:col-span-2 flex items-center gap-3">
+                  <input
+                    id="cashierName"
+                    type="text"
+                    value={cashierName}
+                    onChange={(e) => setCashierName(e.target.value)}
+                    placeholder="Contoh: Aikira"
+                    disabled={!cashierEnabled}
+                    className={`w-full rounded-lg border px-3 py-2 outline-none ${
+                      cashierEnabled
+                        ? "border-neutral-800 bg-neutral-900 text-neutral-100 placeholder-neutral-500 focus:border-amber-400"
+                        : "border-neutral-800 bg-neutral-800/50 text-neutral-400 placeholder-neutral-500 cursor-not-allowed"
+                    }`}
+                  />
+                  <label className="inline-flex items-center gap-2 text-xs text-neutral-300 select-none">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-amber-500"
+                      checked={cashierEnabled}
+                      onChange={(e) => setCashierEnabled(e.target.checked)}
+                    />
+                    KASIR
+                  </label>
+                </div>
+              </div>
+
               <div className="grid items-center gap-2 sm:grid-cols-3">
                 <label htmlFor="storeName" className="text-sm text-neutral-300">
                   Nama Toko
@@ -284,23 +338,6 @@ export default function Page() {
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
                   placeholder="Contoh: Toko Aikira"
-                  className="sm:col-span-2 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-500 outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div className="grid items-center gap-2 sm:grid-cols-3">
-                <label
-                  htmlFor="cashierName"
-                  className="text-sm text-neutral-300"
-                >
-                  Nama Kasir
-                </label>
-                <input
-                  id="cashierName"
-                  type="text"
-                  value={cashierName}
-                  onChange={(e) => setCashierName(e.target.value)}
-                  placeholder="Contoh: Aikira"
                   className="sm:col-span-2 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 placeholder-neutral-500 outline-none focus:border-amber-400"
                 />
               </div>
@@ -343,7 +380,7 @@ export default function Page() {
                   htmlFor="footerLine1"
                   className="text-sm text-neutral-300"
                 >
-                  Footer baris 1
+                  Baris 1
                 </label>
                 <input
                   id="footerLine1"
@@ -359,7 +396,7 @@ export default function Page() {
                   htmlFor="footerLine2"
                   className="text-sm text-neutral-300"
                 >
-                  Footer baris 2
+                  Baris 2
                 </label>
                 <input
                   id="footerLine2"
@@ -371,7 +408,7 @@ export default function Page() {
                 />
               </div>
               <p className="text-xs text-neutral-500">
-                Kosongkan footer jika tidak ingin ditampilkan.
+                Kosongkan jika tidak ingin ditampilkan.
               </p>
 
               <div className="grid items-center gap-2 sm:grid-cols-3">
@@ -413,19 +450,14 @@ export default function Page() {
               <input
                 type="text"
                 inputMode="numeric"
-                min={1}
-                step={1}
                 value={itemQty}
                 onChange={(e) =>
-                  setItemQty(
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
+                  setItemQty(parseDigitsToNumber(e.target.value))
                 }
                 placeholder="Jumlah"
                 required
-                className="no-spinner rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-right text-neutral-100 placeholder-neutral-500 outline-none focus:border-amber-400"
+                className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-right text-neutral-100 placeholder-neutral-500 outline-none focus:border-amber-400"
               />
-              {/* Input harga: text + format rupiah */}
               <input
                 type="text"
                 inputMode="numeric"
@@ -499,18 +531,17 @@ export default function Page() {
                           </td>
                           <td className="px-3 py-2 text-right">
                             <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              className="no-spinner w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-right text-neutral-100 outline-none focus:border-amber-400"
+                              type="text"
+                              inputMode="numeric"
+                              className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-right text-neutral-100 outline-none focus:border-amber-400"
                               value={it.qty}
-                              onChange={(e) =>
-                                updateItemField(it.id, "qty", e.target.value)
-                              }
+                              onChange={(e) => {
+                                const digits = onlyDigits(e.target.value);
+                                updateItemField(it.id, "qty", digits);
+                              }}
                             />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            {/* Harga edit: text rupiah */}
                             <input
                               type="text"
                               inputMode="numeric"
@@ -572,13 +603,14 @@ export default function Page() {
             </div>
           </section>
 
-          <section className="rounded-2xl sm:rounded-3xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5 shadow-2xl shadow-black/50 ring-1 ring-amber-500/10 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/40">
-            <h2 className="mb-3 text-base sm:text-lg font-semibold text-amber-300 print:hidden">
+          {/* Preview UI (boxed) - sembunyikan saat print */}
+          <section className="print:hidden rounded-2xl sm:rounded-3xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5 shadow-2xl shadow-black/50 ring-1 ring-amber-500/10 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/40">
+            <h2 className="mb-3 text-base sm:text-lg font-semibold text-amber-300">
               Preview Nota
             </h2>
 
             <div
-              className={`mx-auto rounded-xl bg-white p-2 text-neutral-900 shadow-2xl shadow-black/40 ring-1 ring-neutral-200 print:m-0 print:shadow-none print:ring-0 ${receiptWidthClass}`}
+              className={`mx-auto rounded-xl bg-white p-2 text-neutral-900 shadow-2xl shadow-black/40 ring-1 ring-neutral-200 ${receiptWidthClass}`}
             >
               <div className="font-mono text-[11px] sm:text-[12px] leading-5">
                 {logoDataUrl && (
@@ -594,7 +626,11 @@ export default function Page() {
                 <div className="text-center font-extrabold">
                   {storeName || "NAMA TOKO"}
                 </div>
-                <div className="text-center">Kasir: {cashierName || "-"}</div>
+                {cashierEnabled && (
+                  <div className="text-center">
+                    Kasir: {cashierName.trim() || "-"}
+                  </div>
+                )}
                 <div className="text-center">{displayDate}</div>
 
                 {note.trim() !== "" && (
@@ -640,6 +676,76 @@ export default function Page() {
                   <div className="text-center text-neutral-500">
                     {footerLine2}
                   </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Print-only: Nota polos tanpa box pembungkus */}
+          <section className="hidden print:block">
+            <div className={`mx-auto ${receiptWidthClass}`}>
+              <div className="font-mono text-[12px] leading-5 text-black">
+                {logoDataUrl && (
+                  <div className="mb-1">
+                    <img
+                      src={logoDataUrl}
+                      alt="Logo Toko"
+                      className="mx-auto max-h-16 w-auto object-contain"
+                    />
+                  </div>
+                )}
+
+                <div className="text-center font-extrabold">
+                  {storeName || "NAMA TOKO"}
+                </div>
+                {cashierEnabled && (
+                  <div className="text-center">
+                    Kasir: {cashierName.trim() || "-"}
+                  </div>
+                )}
+                <div className="text-center">{displayDate}</div>
+
+                {note.trim() !== "" && (
+                  <>
+                    <div className="my-1" />
+                    <div className="whitespace-pre-wrap text-center text-[11px] leading-4">
+                      {note}
+                    </div>
+                  </>
+                )}
+
+                <div className="my-1 border-b border-dashed border-neutral-600" />
+
+                <div className="space-y-1">
+                  {items.map((it) => (
+                    <div key={it.id}>
+                      <div className="break-words font-semibold">{it.name}</div>
+                      <div className="flex items-center justify-between tabular-nums">
+                        <span>
+                          {it.qty} x {formatIDR(it.price)}
+                        </span>
+                        <span className="font-semibold">
+                          {formatIDR(it.qty * it.price)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="my-1 border-b border-dashed border-neutral-600" />
+
+                <div className="flex items-center justify-between font-extrabold tabular-nums">
+                  <span>Total</span>
+                  <span>{formatIDR(total)}</span>
+                </div>
+
+                <div className="my-1 border-b border-dotted border-neutral-600" />
+
+                {footerLine1.trim() !== "" && (
+                  <div className="text-center">{footerLine1}</div>
+                )}
+                {footerLine2.trim() !== "" && (
+                  <div className="text-center">{footerLine2}</div>
                 )}
               </div>
             </div>
